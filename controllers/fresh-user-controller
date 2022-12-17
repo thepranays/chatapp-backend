@@ -1,0 +1,89 @@
+const { validationResult } = require('express-validator');
+const bcrypt = require("bcryptjs");
+const HttpError = require('../models/http-error');
+const jwt = require('jsonwebtoken');
+
+const User = require("../models/user");
+
+
+const isValidUser = async (req, res, next) => {
+    const email = req.body.email;
+    const password = req.body.password;
+    let user;
+    let isValidPass = false;
+    try {
+        user = await User.findOne({ email: email });
+        isValidPass = await bcrypt.compare(password, user.password);
+
+
+    } catch (err) {
+        console.log(err);
+        const httpError = new HttpError("Backend error", 500);
+        return next(httpError);
+    }
+
+    if (!user || !isValidPass) {
+        const httpError = new HttpError("user not found/Incorrect pass", 404);
+
+        return next(httpError);
+    }
+    let token;
+    try {
+        token = jwt.sign(
+            { userId: user.id, email: user.email },
+            "secret_temp_key");
+    } catch (err) {
+        console.log(err);
+        return next(new HttpError("Internal server Error,signup failed", 500));
+    }
+
+    res.status(201).json({ userId: user.id, email: user.email, token: token });
+};
+
+
+
+const createUser = async (req, res, next) => {
+    let hashedPassword;
+    const email = req.body.email;
+    const password = req.body.password;
+    const name = req.body.name;
+    try {
+        hashedPassword = await bcrypt.hash(password, 12);
+    } catch (err) {
+        return next(new HttpError("Could not create user", 500));
+    }
+
+
+    const newUser = new User({
+        email,
+        password: hashedPassword,
+        name,
+    });
+
+    try {
+        await newUser.save();
+
+    } catch (err) {
+        console.log(err);
+        return next(new HttpError("Internal server Error,signup failed", 500));
+    }
+
+
+
+    let token;
+    try {
+        token = jwt.sign(
+            { userId: newUser.id, email: newUser.email },
+            "secret_temp_key");
+    } catch (err) {
+        console.log(err);
+        return next(new HttpError("Internal server Error,signup failed", 500));
+    }
+
+    res.status(201).json({ userId: newUser.id, email: newUser.email, token: token });
+};
+
+
+
+exports.isValidUser = isValidUser;
+exports.createUser = createUser;
